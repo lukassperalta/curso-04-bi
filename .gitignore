@@ -1,0 +1,30 @@
+# ==========================================================
+# .gitignore - PROYECTO BI DNIT (Aduanas)
+# ==========================================================
+
+# ----------------------------------------------------------
+# DATOS PESADOS (no subir al repositorio)
+# Descargar desde: https://www.dnit.gov.py/web/portal-institucional/datos-abiertos
+# ----------------------------------------------------------
+data_lake/bronze/*.csv
+data_lake/silver/*.parquet
+data_lake/gold/*.parquet
+db/*.duckdb
+pbi/*.pbix
+
+# ----------------------------------------------------------
+# IMÁGENES GENERADAS (se regeneran ejecutando los scripts)
+# ----------------------------------------------------------
+reports/output_images/
+
+# ----------------------------------------------------------
+# ENTORNO VIRTUAL (cada usuario genera el suyo con requirements.txt)
+# ----------------------------------------------------------
+venv/
+
+# ----------------------------------------------------------
+# ARCHIVOS DEL SISTEMA
+# ----------------------------------------------------------
+__pycache__/
+*.pyc
+.DS_Store
