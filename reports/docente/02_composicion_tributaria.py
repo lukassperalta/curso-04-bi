@@ -30,36 +30,37 @@ PALETA_COLORES = [
 
 # ----------------------------------------------------------
 # CONSULTA: Tributos de importaciones desde Gold
-# Filtra solo IMPORTACION para análisis tributario.
-# Los valores vienen en Guaraníes (sin conversión a USD)
-# ya que los tributos se liquidan en moneda local.
+# Divide cada tributo por la cotización del día para
+# obtener el valor real en USD por operación.
+# Se excluyen registros con cotización 0 para evitar
+# división por cero.
 # ----------------------------------------------------------
 conexion = duckdb.connect()
 
 consulta_sql = f"""
     SELECT
-        o.operacion_desc,
-        f.impuesto_derecho,
-        f.impuesto_iva,
-        f.impuesto_isc,
-        f.anticipo_renta
+        SUM(f.impuesto_derecho / f.tasa_valoracion) AS derecho,
+        SUM(f.impuesto_iva     / f.tasa_valoracion) AS iva,
+        SUM(f.impuesto_isc     / f.tasa_valoracion) AS isc,
+        SUM(f.anticipo_renta   / f.tasa_valoracion) AS renta
     FROM '{carpeta_gold / "fact_aduana.parquet"}' f
     LEFT JOIN '{carpeta_gold / "dim_operacion.parquet"}' o
         ON f.operacion_key = o.id_operacion
     WHERE o.operacion_desc = 'IMPORTACION'
+    AND f.tasa_valoracion > 0
 """
-datos = conexion.execute(consulta_sql).fetchdf()
+datos = conexion.execute(consulta_sql).fetchone()
 
-# Suma total por tipo de tributo
+# Suma total por tipo de tributo en USD real
 tributos = {
-    "Derecho": datos["impuesto_derecho"].sum(),
-    "IVA":     datos["impuesto_iva"].sum(),
-    "ISC":     datos["impuesto_isc"].sum(),
-    "Renta":   datos["anticipo_renta"].sum(),
+    "Derecho": datos[0],
+    "IVA":     datos[1],
+    "ISC":     datos[2],
+    "Renta":   datos[3],
 }
 
 # Excluir tributos sin recaudación (monto = 0)
-tributos = {nombre: monto for nombre, monto in tributos.items() if monto > 0}
+tributos = {nombre: monto for nombre, monto in tributos.items() if monto and monto > 0}
 
 # ==========================================================
 # GRÁFICO: Pie chart de composición tributaria
@@ -88,11 +89,11 @@ for texto_pct in porcentajes:
     texto_pct.set_fontsize(9)
     texto_pct.set_fontweight("bold")
 
-# Total recaudado como texto debajo del gráfico
+# Total recaudado en USD real como texto debajo del gráfico
 total_recaudado = sum(tributos.values())
 eje.text(
     0, -1.45,
-    f"Total recaudado: Gs {total_recaudado:,.0f}",
+    f"Total recaudado: $ {total_recaudado:,.2f} USD",
     ha="center", fontsize=9, color="#444444"
 )
 
