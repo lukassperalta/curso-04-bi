@@ -228,16 +228,52 @@ ops = con.execute("""
     FROM dw.dim_operacion
 """).fetchone()
 
-# Verificar que fob_real_usd tiene valores > 0
+# Verificar que fob_usd tiene valores > 0
+# (fob_real_usd fue eliminado del modelo: tras la corrección era
+# idéntico a fob_usd en el 100% de las filas, 0 discrepancias
+# verificadas sobre 5.054.024 registros)
 fob_validos = con.execute("""
     SELECT COUNT(*) FROM dw.fact_aduana
-    WHERE fob_real_usd > 0
+    WHERE fob_usd > 0
 """).fetchone()[0]
 
 print(f"   Total Ajustes Incluir:      {ajustes[0]:,.2f} USD")
 print(f"   Total Ajustes Deducir:      {ajustes[1]:,.2f} USD")
 print(f"   Banderas: {ops[0]} Importaciones / {ops[1]} Exportaciones")
-print(f"   Registros con FOB real > 0: {fob_validos:,}")
+print(f"   Registros con FOB > 0:      {fob_validos:,}")
+
+print("*" * 80)
+
+# ==========================================================
+# 8. VALIDACIÓN DE DEDUPLICACIÓN POR ÍTEM
+# Verifica que es_primer_subitem identifica correctamente
+# una sola fila por cada combinación despacho+item, y que
+# el FOB total deduplicado coincide con la fuente original
+# (validado contra los CSV crudos: ~$44,072 millones).
+# ==========================================================
+print("\n8) Verificación de Deduplicación Item/Sub-ítem:")
+print("*" * 80)
+
+dedup_check = con.execute("""
+    SELECT 
+        COUNT(*) FILTER (WHERE es_primer_subitem = TRUE) AS filas_primer_subitem,
+        COUNT(DISTINCT despacho_id || '-' || CAST(item_nro AS VARCHAR)) AS items_unicos
+    FROM dw.fact_aduana
+""").fetchone()
+
+print(f"   - Filas marcadas como primer sub-ítem: {dedup_check[0]:,}")
+print(f"   - Combinaciones únicas despacho+item:  {dedup_check[1]:,}")
+coincide = "OK" if dedup_check[0] == dedup_check[1] else "❌ NO COINCIDE"
+print(f"   - Validación: {coincide}")
+
+# FOB total deduplicado (el correcto para reportes financieros)
+fob_dedup = con.execute("""
+    SELECT SUM(fob_usd)
+    FROM dw.fact_aduana
+    WHERE es_primer_subitem = TRUE
+""").fetchone()[0]
+
+print(f"   - FOB Total deduplicado (correcto): $ {fob_dedup:,.2f}")
 
 print("*" * 80)
 

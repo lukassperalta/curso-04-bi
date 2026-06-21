@@ -37,17 +37,26 @@ PALETA_COLORES = [
 # CONSULTA: FOB por aduana desde Gold
 # JOIN con dim_aduana para obtener el nombre del puesto.
 # Top 5 aduanas con mayor FOB acumulado.
+# Filtramos es_primer_subitem = TRUE para evitar duplicar el
+# FOB de cabecera del ítem en cada sub-ítem.
+# También filtramos por oficializacion en 2025: el dataset
+# incluye despachos con oficializacion de 2024 o años
+# anteriores (arrastre administrativo de los CSV mensuales),
+# que deben excluirse para representar estrictamente el año.
 # ----------------------------------------------------------
 conexion = duckdb.connect()
 
 datos = conexion.execute(f"""
     SELECT
         a.aduana_nombre,
-        SUM(f.fob_real_usd) AS fob_total
+        SUM(f.fob_usd) AS fob_total
     FROM '{carpeta_gold / "fact_aduana.parquet"}' f
     LEFT JOIN '{carpeta_gold / "dim_aduana.parquet"}' a
         ON f.aduana_key = a.id_aduana
     WHERE a.aduana_nombre IS NOT NULL
+    AND f.es_primer_subitem = TRUE
+    AND f.oficializacion >= '2025-01-01'
+    AND f.oficializacion <= '2025-12-31'
     GROUP BY a.aduana_nombre
     ORDER BY fob_total DESC
 """).fetchdf()

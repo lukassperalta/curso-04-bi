@@ -87,7 +87,7 @@ CREATE TABLE dw.stg_aduana (
     renta               DOUBLE,
     iva                 DOUBLE,
     otros               DOUBLE,
-    total               DOUBLE
+    total                DOUBLE
 );
 
 -- ================================================
@@ -214,12 +214,30 @@ CREATE TABLE IF NOT EXISTS dw.fact_aduana (
     item_nro             INTEGER,
     sub_item_nro         INTEGER,
 
+    -- Flag de deduplicación: TRUE solo en la primera fila de cada
+    -- combinación despacho+item. Los campos financieros (FOB, IVA,
+    -- derecho, etc.) pertenecen al ITEM y se repiten en cada sub-item
+    -- del CSV original. Para sumar totales sin duplicar, filtrar por
+    -- es_primer_subitem = TRUE. Para análisis a nivel sub-item
+    -- (marca, descripción de producto) usar todas las filas.
+    es_primer_subitem    BOOLEAN,
+
+    -- Fechas de despacho (columnas directas, decisión pragmática):
+    -- se evaluó modelarlas como FK adicionales hacia dim_fecha
+    -- (Role-Playing Dimension), pero se optó por columnas DATE
+    -- directas porque solo se usan para calcular dias_despacho
+    -- y para un filtro simple de página, sin necesitar drill-down
+    -- jerárquico (año/trimestre/mes) propio de cada fecha.
+    oficializacion        DATE,
+    cancelacion           DATE,
+    dias_despacho         INTEGER,
+
     -- Métricas financieras (precisión: 2 y 4 decimales)
     fob_usd              DECIMAL(18,2),
     flete_usd            DECIMAL(18,2),
     seguro_usd           DECIMAL(18,2),
     kilo_neto            DECIMAL(18,2),
-    kilo_bruto           DECIMAL(18,2),
+    kilo_bruto            DECIMAL(18,2),
     sub_item_cantidad    DECIMAL(18,2),
     sub_item_precio_un   DECIMAL(18,4),
     ajuste_incluir       DECIMAL(18,2),
@@ -232,8 +250,8 @@ CREATE TABLE IF NOT EXISTS dw.fact_aduana (
     anticipo_renta       DECIMAL(18,2),
     tasa_valoracion      DECIMAL(18,2),
 
-    -- Columnas normalizadas (Guaraníes convertidos a USD)
-    fob_real_usd          DECIMAL(18,2),
+    -- Columna normalizada: iva viene en Guaraníes en el CSV
+    -- original, se divide por cotizacion para obtener USD real.
     impuesto_iva_real_usd DECIMAL(18,2),
 
     -- Metadatos de carga

@@ -34,6 +34,13 @@ PALETA_COLORES = [
 # obtener el valor real en USD por operación.
 # Se excluyen registros con cotización 0 para evitar
 # división por cero.
+# Filtramos es_primer_subitem = TRUE porque los 4 tributos
+# son valores de cabecera del ítem que se repiten en cada
+# sub-ítem; sin este filtro, los totales quedarían duplicados.
+# También filtramos por oficializacion en 2025: el dataset
+# incluye despachos con oficializacion de 2024 o años
+# anteriores (arrastre administrativo de los CSV mensuales),
+# que deben excluirse para representar estrictamente el año.
 # ----------------------------------------------------------
 conexion = duckdb.connect()
 
@@ -48,6 +55,9 @@ consulta_sql = f"""
         ON f.operacion_key = o.id_operacion
     WHERE o.operacion_desc = 'IMPORTACION'
     AND f.tasa_valoracion > 0
+    AND f.es_primer_subitem = TRUE
+    AND f.oficializacion >= '2025-01-01'
+    AND f.oficializacion <= '2025-12-31'
 """
 datos = conexion.execute(consulta_sql).fetchone()
 

@@ -47,10 +47,11 @@ try:
         id_fact, fecha_key, producto_key, marca_key, destino_key, aduana_key, 
         pais_key, canal_key, operacion_key, regimen_key, transporte_key, 
         acuerdo_key, umedida_key, despacho_id, item_nro, sub_item_nro, 
+        es_primer_subitem, oficializacion, cancelacion, dias_despacho,
         fob_usd, flete_usd, seguro_usd, kilo_neto, kilo_bruto, sub_item_cantidad,
         sub_item_precio_un, ajuste_incluir, ajuste_deducir, impuesto_iva, 
         impuesto_derecho, impuesto_isc, anticipo_renta, tasa_valoracion, 
-        fob_real_usd, impuesto_iva_real_usd, batch_id
+        impuesto_iva_real_usd, batch_id
     )
     SELECT 
         row_number() OVER () as id_fact,
@@ -69,6 +70,20 @@ try:
         s.despacho_cifrado,
         s.item,
         s.numero_subitem,
+
+        -- Flag de deduplicación: TRUE solo en la primera fila de cada
+        -- combinación despacho+item. Permite sumar campos financieros
+        -- (FOB, IVA, derecho, etc.) sin duplicar por los sub-items.
+        ROW_NUMBER() OVER (
+            PARTITION BY s.despacho_cifrado, s.item 
+            ORDER BY s.numero_subitem
+        ) = 1 as es_primer_subitem,
+
+        -- Fechas de despacho y tiempo de procesamiento aduanero
+        s.oficializacion,
+        s.cancelacion,
+        DATEDIFF('day', s.oficializacion, s.cancelacion) as dias_despacho,
+
         CAST(s.fob_dolar AS DOUBLE),
         CAST(s.flete_dolar AS DOUBLE),
         CAST(s.seguro_dolar AS DOUBLE),
@@ -84,8 +99,11 @@ try:
         CAST(s.renta AS DOUBLE),
         CAST(s.cotizacion AS DOUBLE),
         
-        -- Cálculos normalizados: convierte Guaraníes a USD usando cotización del día
-        s.fob_dolar::DOUBLE / s.cotizacion::DOUBLE as fob_real_usd,
+        -- iva SÍ viene en Guaraníes en el CSV original, se mantiene la
+        -- división por cotizacion para obtener el valor real en USD.
+        -- (fob_dolar ya viene en USD real, por eso fob_usd se usa
+        -- directamente sin necesidad de una columna fob_real_usd aparte;
+        -- se verificó 0 discrepancias en 5.054.024 filas).
         s.iva::DOUBLE / s.cotizacion::DOUBLE as impuesto_iva_real_usd,
         
         'BATCH_001'

@@ -34,17 +34,26 @@ PALETA_COLORES = [
 # JOIN con dim_pais para obtener el nombre del país.
 # ORDER BY ASC + tail(10) → los 10 mayores al final,
 # barh los muestra de abajo hacia arriba (mayor arriba).
+# Filtramos es_primer_subitem = TRUE para evitar duplicar el
+# FOB de cabecera del ítem en cada sub-ítem.
+# También filtramos por oficializacion en 2025: el dataset
+# incluye despachos con oficializacion de 2024 o años
+# anteriores (arrastre administrativo de los CSV mensuales),
+# que deben excluirse para representar estrictamente el año.
 # ----------------------------------------------------------
 conexion = duckdb.connect()
 
 datos = conexion.execute(f"""
     SELECT
         p.pais_nombre,
-        SUM(f.fob_real_usd) AS fob_total
+        SUM(f.fob_usd) AS fob_total
     FROM '{carpeta_gold / "fact_aduana.parquet"}' f
     LEFT JOIN '{carpeta_gold / "dim_pais.parquet"}' p
         ON f.pais_key = p.id_pais
     WHERE p.pais_nombre IS NOT NULL
+    AND f.es_primer_subitem = TRUE
+    AND f.oficializacion >= '2025-01-01'
+    AND f.oficializacion <= '2025-12-31'
     GROUP BY p.pais_nombre
     ORDER BY fob_total ASC
 """).fetchdf()

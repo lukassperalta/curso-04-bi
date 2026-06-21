@@ -29,14 +29,24 @@ PALETA_COLORES = [
 ]
 
 # ----------------------------------------------------------
-# CONSULTA: Total FOB real desde Gold
-# fob_real_usd = fob_dolar / cotizacion (Guaraníes → USD)
+# CONSULTA: Total FOB desde Gold
+# fob_usd ya viene en USD real en el CSV original (no se divide
+# por cotizacion). Filtramos es_primer_subitem = TRUE porque el
+# FOB es un valor de cabecera del ítem que se repite en cada
+# sub-ítem; sin este filtro el total quedaría duplicado (~2x).
+# También filtramos por oficializacion en 2025: el dataset
+# incluye despachos con oficializacion de 2024 o años
+# anteriores (arrastre administrativo de los CSV mensuales),
+# que deben excluirse para representar estrictamente el año.
 # ----------------------------------------------------------
 conexion = duckdb.connect()
 
 total_fob = conexion.execute(f"""
-    SELECT SUM(fob_real_usd)
+    SELECT SUM(fob_usd)
     FROM '{carpeta_gold / "fact_aduana.parquet"}'
+    WHERE es_primer_subitem = TRUE
+    AND oficializacion >= '2025-01-01'
+    AND oficializacion <= '2025-12-31'
 """).fetchone()[0]
 
 # ==========================================================

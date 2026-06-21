@@ -35,17 +35,20 @@ PALETA_COLORES = [
 # JOIN con dim_producto para obtener la categoría (rubro).
 # Se trae el detalle completo y se agrupa en Python
 # siguiendo la lógica del docente.
+# Filtramos es_primer_subitem = TRUE porque fob_usd es un
+# valor de cabecera del ítem que se repite en cada sub-ítem.
 # ----------------------------------------------------------
 conexion = duckdb.connect()
 
 consulta_sql = f"""
     SELECT 
         p.rubro,
-        f.fob_real_usd
+        f.fob_usd
     FROM '{carpeta_gold / "fact_aduana.parquet"}' f
     LEFT JOIN '{carpeta_gold / "dim_producto.parquet"}' p
         ON f.producto_key = p.id_producto
     WHERE p.rubro IS NOT NULL
+    AND f.es_primer_subitem = TRUE
 """
 datos = conexion.execute(consulta_sql).fetchdf()
 
@@ -63,7 +66,7 @@ figura.suptitle(
 
 fob_por_rubro = (
     datos
-    .groupby("rubro")["fob_real_usd"]
+    .groupby("rubro")["fob_usd"]
     .sum()
     .sort_values(ascending=True)
     .tail(8)
@@ -108,4 +111,4 @@ plt.savefig(ruta_salida, bbox_inches="tight")
 plt.show()
 
 # Total general como verificación rápida contra Power BI
-print(f"Total FOB real: ${datos['fob_real_usd'].sum() / 1e6:.2f}M")
+print(f"Total FOB real: ${datos['fob_usd'].sum() / 1e6:.2f}M")

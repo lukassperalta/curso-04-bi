@@ -33,6 +33,8 @@ PALETA_COLORES = [
 # JOIN entre fact y dim_fecha para agrupar por mes.
 # anio_mes se construye en SQL para garantizar orden correcto.
 # Filtro WHERE anio = 2025 — dinámico al agregar más meses.
+# Filtramos es_primer_subitem = TRUE para evitar duplicar el
+# FOB de cabecera del ítem en cada sub-ítem.
 # ----------------------------------------------------------
 conexion = duckdb.connect()
 
@@ -42,11 +44,12 @@ evolucion = conexion.execute(f"""
         d.mes_numero,
         d.mes_nombre,
         CONCAT(CAST(d.anio AS VARCHAR), '-', LPAD(CAST(d.mes_numero AS VARCHAR), 2, '0')) AS anio_mes,
-        SUM(f.fob_real_usd) AS fob_total
+        SUM(f.fob_usd) AS fob_total
     FROM '{carpeta_gold / "fact_aduana.parquet"}' f
     LEFT JOIN '{carpeta_gold / "dim_fecha.parquet"}' d
         ON f.fecha_key = d.id_fecha
     WHERE d.anio = 2025
+    AND f.es_primer_subitem = TRUE
     GROUP BY d.anio, d.mes_numero, d.mes_nombre
     ORDER BY d.anio, d.mes_numero
 """).fetchdf()

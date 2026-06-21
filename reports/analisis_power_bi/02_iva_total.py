@@ -31,12 +31,22 @@ PALETA_COLORES = [
 # ----------------------------------------------------------
 # CONSULTA: Total IVA real desde Gold
 # impuesto_iva_real_usd = iva / cotizacion (Guaraníes → USD)
+# Filtramos es_primer_subitem = TRUE porque el IVA es un valor
+# de cabecera del ítem que se repite en cada sub-ítem; sin este
+# filtro el total quedaría duplicado (~2x).
+# También filtramos por oficializacion en 2025: el dataset
+# incluye despachos con oficializacion de 2024 o años
+# anteriores (arrastre administrativo de los CSV mensuales),
+# que deben excluirse para representar estrictamente el año.
 # ----------------------------------------------------------
 conexion = duckdb.connect()
 
 total_iva = conexion.execute(f"""
     SELECT SUM(impuesto_iva_real_usd)
     FROM '{carpeta_gold / "fact_aduana.parquet"}'
+    WHERE es_primer_subitem = TRUE
+    AND oficializacion >= '2025-01-01'
+    AND oficializacion <= '2025-12-31'
 """).fetchone()[0]
 
 # ==========================================================

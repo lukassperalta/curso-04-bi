@@ -28,17 +28,28 @@ COLOR_IMPORTACION = "#B44365"
 # ----------------------------------------------------------
 # CONSULTA: Operación y FOB desde Gold
 # JOIN con dim_operacion para obtener la descripción
-# (EXPORTACION / IMPORTACION) en lugar del ID numérico
+# (EXPORTACION / IMPORTACION) en lugar del ID numérico.
+# Filtramos es_primer_subitem = TRUE porque fob_usd es un
+# valor de cabecera del ítem que se repite en cada sub-ítem;
+# además, "Cantidad de Items" debe contar ítems únicos, no
+# filas de sub-ítem.
+# También filtramos por oficializacion en 2025: el dataset
+# incluye despachos con oficializacion de 2024 o años
+# anteriores (arrastre administrativo de los CSV mensuales),
+# que deben excluirse para representar estrictamente el año.
 # ----------------------------------------------------------
 conexion = duckdb.connect()
 
 consulta_sql = f"""
     SELECT
         o.operacion_desc AS operacion,
-        f.fob_real_usd
+        f.fob_usd
     FROM '{carpeta_gold / "fact_aduana.parquet"}' f
     LEFT JOIN '{carpeta_gold / "dim_operacion.parquet"}' o
         ON f.operacion_key = o.id_operacion
+    WHERE f.es_primer_subitem = TRUE
+    AND f.oficializacion >= '2025-01-01'
+    AND f.oficializacion <= '2025-12-31'
 """
 datos = conexion.execute(consulta_sql).fetchdf()
 
@@ -62,7 +73,7 @@ figura.suptitle(
 )
 
 cantidad_por_operacion = datos["operacion"].value_counts()
-fob_por_operacion      = datos.groupby("operacion")["fob_real_usd"].sum()
+fob_por_operacion      = datos.groupby("operacion")["fob_usd"].sum()
 
 pares = [
     (ejes[0], cantidad_por_operacion, "Cantidad de Items"),

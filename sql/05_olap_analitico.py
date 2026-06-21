@@ -42,6 +42,10 @@ try:
     # Une los hechos con las dimensiones más relevantes para
     # análisis de importaciones. Evita escribir JOINs repetidos
     # en cada consulta de negocio.
+    # Filtramos es_primer_subitem = TRUE porque fob_usd e
+    # impuesto_iva son campos de cabecera del item que se
+    # repiten en cada sub-item: sin este filtro, SUM() sobre
+    # esta vista duplicaría los totales financieros.
     # ==========================================================
     con.execute("""
     CREATE OR REPLACE VIEW dw.v_analisis_importaciones AS
@@ -57,7 +61,8 @@ try:
     FROM dw.fact_aduana f
     JOIN dw.dim_fecha  d_fe ON f.fecha_key  = d_fe.id_fecha
     JOIN dw.dim_pais   d_pa ON f.pais_key   = d_pa.id_pais
-    JOIN dw.dim_aduana d_ad ON f.aduana_key = d_ad.id_aduana;
+    JOIN dw.dim_aduana d_ad ON f.aduana_key = d_ad.id_aduana
+    WHERE f.es_primer_subitem = TRUE;
     """)
     log("[OK] Vista analítica v_analisis_importaciones creada.")
 

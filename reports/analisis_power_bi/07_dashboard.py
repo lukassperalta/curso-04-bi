@@ -44,19 +44,31 @@ PALETA_COLORES = [
 # Cada consulta alimenta un visual del dashboard.
 # Se ejecutan todas antes de renderizar para separar
 # la capa de datos de la capa de visualización.
+# Todas filtran es_primer_subitem = TRUE para evitar
+# duplicar el FOB de cabecera del ítem en cada sub-ítem,
+# y oficializacion en 2025 para excluir el arrastre
+# administrativo de despachos de 2024 o años anteriores
+# (la evolución mensual ya queda filtrada vía d.anio=2025
+# porque fecha_key se construye sobre oficializacion).
 # ==========================================================
 conexion = duckdb.connect()
 
 # KPI: FOB total acumulado
 total_fob = conexion.execute(f"""
-    SELECT SUM(fob_real_usd)
+    SELECT SUM(fob_usd)
     FROM '{carpeta_gold / "fact_aduana.parquet"}'
+    WHERE es_primer_subitem = TRUE
+    AND oficializacion >= '2025-01-01'
+    AND oficializacion <= '2025-12-31'
 """).fetchone()[0]
 
 # KPI: IVA total acumulado
 total_iva = conexion.execute(f"""
     SELECT SUM(impuesto_iva_real_usd)
     FROM '{carpeta_gold / "fact_aduana.parquet"}'
+    WHERE es_primer_subitem = TRUE
+    AND oficializacion >= '2025-01-01'
+    AND oficializacion <= '2025-12-31'
 """).fetchone()[0]
 
 # Línea temporal: FOB mensual 2025
@@ -64,40 +76,50 @@ evolucion = conexion.execute(f"""
     SELECT
         d.anio, d.mes_numero,
         CONCAT(CAST(d.anio AS VARCHAR), '-', LPAD(CAST(d.mes_numero AS VARCHAR), 2, '0')) AS anio_mes,
-        SUM(f.fob_real_usd) AS fob_total
+        SUM(f.fob_usd) AS fob_total
     FROM '{carpeta_gold / "fact_aduana.parquet"}' f
     LEFT JOIN '{carpeta_gold / "dim_fecha.parquet"}' d ON f.fecha_key = d.id_fecha
     WHERE d.anio = 2025
+    AND f.es_primer_subitem = TRUE
     GROUP BY d.anio, d.mes_numero
     ORDER BY d.anio, d.mes_numero
 """).fetchdf()
 
 # Barras: Top 10 países por FOB (ASC + tail = mayor arriba en barh)
 paises = conexion.execute(f"""
-    SELECT p.pais_nombre, SUM(f.fob_real_usd) AS fob_total
+    SELECT p.pais_nombre, SUM(f.fob_usd) AS fob_total
     FROM '{carpeta_gold / "fact_aduana.parquet"}' f
     LEFT JOIN '{carpeta_gold / "dim_pais.parquet"}' p ON f.pais_key = p.id_pais
     WHERE p.pais_nombre IS NOT NULL
+    AND f.es_primer_subitem = TRUE
+    AND f.oficializacion >= '2025-01-01'
+    AND f.oficializacion <= '2025-12-31'
     GROUP BY p.pais_nombre
     ORDER BY fob_total ASC
 """).fetchdf().tail(10)
 
 # Barras: Top 5 productos por FOB
 productos = conexion.execute(f"""
-    SELECT p.mercaderia, SUM(f.fob_real_usd) AS fob_total
+    SELECT p.mercaderia, SUM(f.fob_usd) AS fob_total
     FROM '{carpeta_gold / "fact_aduana.parquet"}' f
     LEFT JOIN '{carpeta_gold / "dim_producto.parquet"}' p ON f.producto_key = p.id_producto
     WHERE p.mercaderia IS NOT NULL
+    AND f.es_primer_subitem = TRUE
+    AND f.oficializacion >= '2025-01-01'
+    AND f.oficializacion <= '2025-12-31'
     GROUP BY p.mercaderia
     ORDER BY fob_total ASC
 """).fetchdf().tail(5)
 
 # Dona: Top 5 aduanas por FOB
 aduanas = conexion.execute(f"""
-    SELECT a.aduana_nombre, SUM(f.fob_real_usd) AS fob_total
+    SELECT a.aduana_nombre, SUM(f.fob_usd) AS fob_total
     FROM '{carpeta_gold / "fact_aduana.parquet"}' f
     LEFT JOIN '{carpeta_gold / "dim_aduana.parquet"}' a ON f.aduana_key = a.id_aduana
     WHERE a.aduana_nombre IS NOT NULL
+    AND f.es_primer_subitem = TRUE
+    AND f.oficializacion >= '2025-01-01'
+    AND f.oficializacion <= '2025-12-31'
     GROUP BY a.aduana_nombre
     ORDER BY fob_total DESC
 """).fetchdf().head(5)
