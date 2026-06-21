@@ -34,7 +34,11 @@ curso-04-bi/
 |   |-- 01_crear_tablas.py            # DDL: crea schema dw y todas las tablas
 |   |-- 05_olap_analitico.py          # Vistas SQL y tablas agregadas (OLAP)
 |   |-- 07_verificar_creacion_tablas.py # Auditoria de calidad e integridad
-|   └-- benchmark_hilos.py            # Mide el numero optimo de workers para HDD/SSD
+|   |-- benchmark_hilos.py            # Mide el numero optimo de workers para HDD/SSD
+|   └-- verificaciones/                # Scripts de validacion contra el CSV crudo
+|       |-- 03_verificacion_general.py     # KPIs sin filtro de operacion (12 meses)
+|       |-- 04_verificacion_importacion.py # KPIs solo importacion
+|       └-- 05_verificacion_exportacion.py # KPIs solo exportacion
 |
 |-- reports/
 |   |-- analisis_power_bi/            # Scripts de analisis y visualizacion Python
@@ -51,19 +55,26 @@ curso-04-bi/
 |   |   |-- 02_composicion_tributaria.py
 |   |   └-- 03_fob_por_rubro.py
 |   |
+|   |-- examen_final/                 # 3 analisis adicionales requeridos por la catedra
+|   |   |-- 01_canal_despacho.py      # Canal de control y tiempos de despacho
+|   |   |-- 02_ratio_embalaje.py      # Kilo Bruto vs Kilo Neto por rubro
+|   |   └-- 03_acuerdos_comerciales.py # Impacto de acuerdos comerciales en el FOB
+|   |
 |   └-- output_images/                # Imagenes PNG generadas (no incluidas en repo)
 |       |-- analisis_power_bi/
-|       └-- docente/
+|       |-- docente/
+|       └-- examen_final/
 |
 |-- pbi/
-|   └-- BI_DNIT_Aduanas_Principal.pbix # Dashboard interactivo Power BI (no incluidas en repo)
+|   └-- BI_DNIT_Aduanas_Principal.pbix # Dashboard interactivo Power BI (no incluido en repo)
 |
-|-- data_lake/                        # Datos (no incluidos en repo)
+|-- data_lake/                        # Datos (no incluidos en repo, salvo lo indicado)
 |   |-- bronze/                       # CSV originales descargados del DNIT
-|   |   └-- LISTADO_DE_DESTINACIONES.xlsx # Diccionario de destinaciones (incluido)
+|   |   |-- LISTADO_DE_DESTINACIONES.xlsx # Diccionario de destinaciones (incluido)
+|   |   └-- pruebas/
+|   |       └-- 2025_ENERO_Tests.xlsx # Muestra reducida para inspeccionar la estructura de columnas
 |   |-- silver/                       # Parquet limpio generado por el ETL
-|   |-- gold/                         # Modelo estrella en Parquet
-|   └-- pruebas/                      # CSVs de prueba (subconjunto para desarrollo)
+|   └-- gold/                         # Modelo estrella en Parquet
 |
 |-- db/
 |   └-- aduana.duckdb                 # Base de datos DuckDB (no incluida en repo)
@@ -112,8 +123,10 @@ https://www.dnit.gov.py/web/portal-institucional/datos-abiertos
 
 Colocar los archivos descargados en `data_lake/bronze/`.
 
-Para pruebas con menos datos, colocar un subconjunto de CSVs en `data_lake/pruebas/`
-y ajustar la variable `CSV_FOLDER` en `02_etl_cargar_staging.py`.
+El archivo `data_lake/bronze/pruebas/2025_ENERO_Tests.xlsx` contiene una
+muestra reducida en formato Excel, usada durante el desarrollo para
+inspeccionar visualmente la estructura de columnas del dataset original
+antes de automatizar la lectura masiva de los 12 CSV mensuales.
 
 ### Ejecucion
 
@@ -131,6 +144,20 @@ python etl/06_exportar_modelo_estrella.py
 python sql/07_verificar_creacion_tablas.py
 ```
 
+### Verificacion contra el CSV crudo
+
+Los scripts de `sql/verificaciones/` recalculan los KPIs principales
+(volumen, FOB, IVA, top paises, principales productos, participacion
+por aduana) leyendo directamente los 12 archivos CSV con pandas, sin
+pasar por DuckDB ni por el pipeline. Sirven para validar de forma
+independiente que el modelo Gold no introduce errores de calculo.
+
+```bash
+python sql/verificaciones/03_verificacion_general.py
+python sql/verificaciones/04_verificacion_importacion.py
+python sql/verificaciones/05_verificacion_exportacion.py
+```
+
 ---
 
 ## Modelo de Datos
@@ -138,12 +165,46 @@ python sql/07_verificar_creacion_tablas.py
 El modelo sigue un esquema estrella con 1 tabla de hechos y 12 dimensiones:
 
 **Fact Table**
-- `fact_aduana` — granularidad a nivel sub-item (5 millones de registros con 12 meses de 2025)
+- `fact_aduana` — granularidad a nivel sub-item (5,054,024 registros, 12 meses de 2025)
 
 **Dimensiones**
 - `dim_fecha`, `dim_pais`, `dim_producto`, `dim_aduana`, `dim_operacion`
 - `dim_regimen`, `dim_canal`, `dim_transporte`, `dim_marca`
 - `dim_destino`, `dim_acuerdo`, `dim_umedida`
+
+**Campos clave de fact_aduana:**
+- `es_primer_subitem` (BOOLEAN) — marca TRUE solo en la primera fila de
+  cada combinacion despacho+item. Los campos financieros (FOB, IVA,
+  derecho, ISC, renta, kilo_neto, kilo_bruto) son valores de cabecera
+  del item que el CSV original repite en cada sub-item; toda consulta
+  que sume estos campos debe filtrar `WHERE es_primer_subitem = TRUE`
+  para no duplicar los totales (promedio: 2.05 sub-items por item).
+- `oficializacion`, `cancelacion` (DATE), `dias_despacho` (INTEGER) —
+  fechas de despacho y tiempo de procesamiento aduanero, usadas en el
+  Analisis 1 del examen final.
+- `fob_usd` — ya viene en USD real en el CSV original (verificado
+  contra el despacho 25DA000000015728); no requiere conversion por
+  cotizacion.
+- `impuesto_iva_real_usd` — `impuesto_iva` SI viene en Guaranies en
+  el CSV original, se divide por `tasa_valoracion` para obtener el
+  valor real en USD.
+
+**Nota metodologica sobre el filtro de año:** el dataset incluye
+despachos con `oficializacion` de 2024 o anios anteriores (arrastre
+administrativo: el nombre del archivo CSV representa el periodo de
+carga del DNIT, no necesariamente la fecha real de oficializacion).
+Para representar estrictamente el año 2025, todas las consultas
+filtran adicionalmente `oficializacion BETWEEN '2025-01-01' AND
+'2025-12-31'`.
+
+---
+
+## Valores de referencia validados (2025 completo)
+
+- Volumen de operaciones (items unicos, deduplicados): 2,465,253
+- FOB Total 2025 (con filtro de año): $42,831,593,047.48
+- FOB Total sin filtro de año (incluye arrastre 2024 y anteriores): $44,072,551,531.76
+- IVA Total (USD real): validado contra calculo manual sobre los 12 CSV crudos
 
 ---
 
@@ -152,7 +213,7 @@ El modelo sigue un esquema estrella con 1 tabla de hechos y 12 dimensiones:
 - Lectura paralela de CSVs con `ThreadPoolExecutor` (2 workers, optimo para HDD)
 - Conversion de tipos numericos via SQL con `TRY_CAST` en DuckDB (3x mas rapido que pandas)
 - Exportacion directa a Parquet desde DuckDB sin pasar por memoria Python
-- Tiempo total del pipeline completo (12 meses): aprox. 8-10 minutos en HDD
+- Tiempo total del pipeline completo (12 meses): aprox. 9-10 minutos en HDD
 
 ---
 
