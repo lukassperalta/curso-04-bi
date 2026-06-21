@@ -11,11 +11,7 @@ data_lake/silver/*.parquet
 data_lake/gold/*.parquet
 db/*.duckdb
 pbi/*.pbix
-
-# ----------------------------------------------------------
-# IMÁGENES GENERADAS (se regeneran ejecutando los scripts)
-# ----------------------------------------------------------
-reports/output_images/
+reports/output_images/*.png
 
 # ----------------------------------------------------------
 # ENTORNO VIRTUAL (cada usuario genera el suyo con requirements.txt)
