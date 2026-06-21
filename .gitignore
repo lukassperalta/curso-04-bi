@@ -11,7 +11,7 @@ data_lake/silver/*.parquet
 data_lake/gold/*.parquet
 db/*.duckdb
 pbi/*.pbix
-reports/output_images/*.png
+reports/output_images/**/*.png
 
 # ----------------------------------------------------------
 # ENTORNO VIRTUAL (cada usuario genera el suyo con requirements.txt)
