@@ -89,7 +89,7 @@ curso-04-bi/
 
 ## Dashboard Power BI
 
-El archivo `.pbix` no está incluido en el repositorio por su tamaño (172 MB).
+El archivo `.pbix` no está incluido en el repositorio por su tamaño (195 MB).
 Para regenerarlo, conectar Power BI Desktop a los archivos Parquet
 de la carpeta `data_lake/gold/` una vez ejecutado el pipeline.
 
