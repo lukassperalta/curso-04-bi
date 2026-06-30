@@ -119,7 +119,13 @@ try:
     LEFT JOIN dw.dim_operacion  d_op ON s.operacion                 = d_op.operacion_desc
     LEFT JOIN dw.dim_regimen    d_re ON s.regimen                   = d_re.regimen_cod
     LEFT JOIN dw.dim_transporte d_tr ON s.medio_transporte          = d_tr.medio_transporte_desc
-    LEFT JOIN dw.dim_acuerdo    d_ac ON s.acuerdo                   = d_ac.acuerdo_desc
+    -- Normalización de acuerdo: las variantes sin acuerdo/SIN ACUERDO/Sin Acuerdo
+    -- del CSV se unifican con UPPER() para que coincidan con la entrada canónica
+    -- 'Sin Acuerdo' que quedó en dim_acuerdo tras la corrección del ETL de dimensiones.
+    LEFT JOIN dw.dim_acuerdo    d_ac ON CASE 
+                                            WHEN UPPER(s.acuerdo) = 'SIN ACUERDO' THEN 'Sin Acuerdo'
+                                            ELSE s.acuerdo 
+                                        END = d_ac.acuerdo_desc
     LEFT JOIN dw.dim_umedida    d_um ON s.unidad_medida_estadistica  = d_um.unidad_medida_desc;
     """)
 

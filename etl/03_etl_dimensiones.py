@@ -55,13 +55,37 @@ cargar_dimension("dw.dim_aduana",     "aduana",                    "id_aduana", 
 cargar_dimension("dw.dim_canal",      "canal",                     "id_canal",      "canal_cod")
 cargar_dimension("dw.dim_regimen",    "regimen",                   "id_regimen",    "regimen_cod")
 cargar_dimension("dw.dim_transporte", "medio_transporte",          "id_transporte", "medio_transporte_desc")
-cargar_dimension("dw.dim_acuerdo",    "acuerdo",                   "id_acuerdo",    "acuerdo_desc")
 cargar_dimension("dw.dim_umedida",    "unidad_medida_estadistica", "id_umedida",    "unidad_medida_desc")
 cargar_dimension("dw.dim_marca",      "marca_item",                "id_marca",      "marca")
 cargar_dimension("dw.dim_destino",    "uso",                       "id_destino",    "uso_estado")
 
 # ----------------------------------------------------------
-# 2. DIMENSIÓN OPERACIÓN
+# 2. DIMENSIÓN ACUERDO
+# Normaliza las variantes de "Sin Acuerdo" (sin acuerdo,
+# SIN ACUERDO, Sin Acuerdo) a una única entrada canónica,
+# para evitar que aparezcan como categorías distintas en
+# los análisis de acuerdos comerciales.
+# ----------------------------------------------------------
+log("-> Procesando dw.dim_acuerdo (con normalización de Sin Acuerdo)...")
+con.execute("DELETE FROM dw.dim_acuerdo;")
+con.execute("""
+    INSERT INTO dw.dim_acuerdo (id_acuerdo, acuerdo_desc)
+    SELECT 
+        row_number() OVER () as id_acuerdo,
+        val as acuerdo_desc
+    FROM (
+        SELECT DISTINCT
+            CASE 
+                WHEN UPPER(acuerdo) = 'SIN ACUERDO' THEN 'Sin Acuerdo'
+                ELSE acuerdo
+            END as val
+        FROM dw.stg_aduana
+        WHERE acuerdo IS NOT NULL
+    ) t;
+""")
+
+# ----------------------------------------------------------
+# 3. DIMENSIÓN OPERACIÓN
 # Agrega flags booleanos de importación/exportación
 # ----------------------------------------------------------
 log("-> Procesando dw.dim_operacion...")
@@ -77,7 +101,7 @@ con.execute("""
 """)
 
 # ----------------------------------------------------------
-# 3. DIMENSIÓN PAÍS
+# 4. DIMENSIÓN PAÍS
 # Unificamos Origen y Procedencia para tener un catálogo único
 # ----------------------------------------------------------
 log("-> Procesando dw.dim_pais...")
@@ -101,7 +125,7 @@ con.execute("""
 """)
 
 # ----------------------------------------------------------
-# 4. DIMENSIÓN PRODUCTO
+# 5. DIMENSIÓN PRODUCTO
 # Por posición NCM toma la descripción más larga (más completa)
 # ----------------------------------------------------------
 log("-> Procesando dw.dim_producto (con limpieza de duplicados)...")
@@ -137,7 +161,7 @@ con.execute("""
 """)
 
 # ----------------------------------------------------------
-# 5. DIMENSIÓN FECHA
+# 6. DIMENSIÓN FECHA
 # Consolida fechas únicas de oficialización y cancelación
 # ----------------------------------------------------------
 log("-> Procesando dw.dim_fecha...")
