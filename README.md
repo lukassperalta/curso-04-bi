@@ -38,7 +38,8 @@ curso-04-bi/
 |   └-- verificaciones/                # Scripts de validacion contra el CSV crudo
 |       |-- 03_verificacion_general.py     # KPIs sin filtro de operacion (12 meses)
 |       |-- 04_verificacion_importacion.py # KPIs solo importacion
-|       └-- 05_verificacion_exportacion.py # KPIs solo exportacion
+|       |-- 05_verificacion_exportacion.py # KPIs solo exportacion
+|       └-- 08_validacion_deduplicacion.py # Impacto visual con/sin es_primer_subitem
 |
 |-- reports/
 |   |-- analisis_power_bi/            # Scripts de analisis y visualizacion Python
@@ -158,6 +159,15 @@ python sql/verificaciones/04_verificacion_importacion.py
 python sql/verificaciones/05_verificacion_exportacion.py
 ```
 
+El script `08_validacion_deduplicacion.py` demuestra el impacto de no
+aplicar la deduplicacion por item/sub-item, mostrando el caso extremo
+(despacho con 2,340 sub-items donde el FOB queda inflado 2,340x) y una
+tabla comparativa de totales con y sin `es_primer_subitem = TRUE`.
+
+```bash
+python sql/verificaciones/08_validacion_deduplicacion.py
+```
+
 ---
 
 ## Modelo de Datos
@@ -178,7 +188,7 @@ El modelo sigue un esquema estrella con 1 tabla de hechos y 12 dimensiones:
   derecho, ISC, renta, kilo_neto, kilo_bruto) son valores de cabecera
   del item que el CSV original repite en cada sub-item; toda consulta
   que sume estos campos debe filtrar `WHERE es_primer_subitem = TRUE`
-  para no duplicar los totales (promedio: 2.05 sub-items por item).
+  para no duplicar los totales (promedio: 2.08 sub-items por item).
 - `oficializacion`, `cancelacion` (DATE), `dias_despacho` (INTEGER) —
   fechas de despacho y tiempo de procesamiento aduanero, usadas en el
   Analisis 1 del examen final.
@@ -197,14 +207,21 @@ Para representar estrictamente el año 2025, todas las consultas
 filtran adicionalmente `oficializacion BETWEEN '2025-01-01' AND
 '2025-12-31'`.
 
+**Nota metodologica sobre deduplicacion:** el portal DNIT documenta
+explicitamente que los valores pueden repetirse de forma proporcional
+a la cantidad de items y sub-items. El campo `es_primer_subitem = TRUE`
+corrige este comportamiento. Sin deduplicar, el FOB total queda inflado
+5.18x y el IVA 9.04x respecto al valor real.
+
 ---
 
 ## Valores de referencia validados (2025 completo)
 
-- Volumen de operaciones (items unicos, deduplicados): 2,465,253
+- Volumen de operaciones (items unicos, deduplicados): 2,377,327
 - FOB Total 2025 (con filtro de año): $42,831,593,047.48
 - FOB Total sin filtro de año (incluye arrastre 2024 y anteriores): $44,072,551,531.76
-- IVA Total (USD real): validado contra calculo manual sobre los 12 CSV crudos
+- IVA Total (USD real): $1,190,275,573.10
+- FOB sin deduplicar (inflado): $221,750,393,736.77 (5.18x el valor real)
 
 ---
 
