@@ -1,13 +1,12 @@
 # ==========================================================
 # PROYECTO: BI - DNIT (Aduanas)
-# SCRIPT:   Top Rubros por FOB USD
-# OBJETIVO: Visualizar los 8 rubros con mayor valor FOB
-#           mediante barras horizontales
+# SCRIPT:   Análisis 1 - Canal de Control y Tiempos de Despacho
+# OBJETIVO: Visualizar la distribución de operaciones por canal
+#           y los días promedio de despacho diferenciados por color
 # ==========================================================
 
 import duckdb
 import matplotlib.pyplot as plt
-import matplotlib.ticker as mticker
 from pathlib import Path
 
 # ----------------------------------------------------------
@@ -15,106 +14,138 @@ from pathlib import Path
 # ----------------------------------------------------------
 carpeta_proyecto = Path(__file__).parent.parent.parent
 carpeta_gold     = carpeta_proyecto / "data_lake" / "gold"
-carpeta_graficos = Path(__file__).parent.parent / "output_images" / "docente"
+carpeta_graficos = Path(__file__).parent.parent / "output_images" / "examen_final"
 
 carpeta_graficos.mkdir(parents=True, exist_ok=True)
 
 # ----------------------------------------------------------
-# PALETA DE COLORES DEL PROYECTO
-# Usa los 4 colores rotativamente en las barras
+# COLORES POR CANAL — representan el semáforo aduanero
 # ----------------------------------------------------------
-PALETA_COLORES = [
-    "#012169",
-    "#d42858",
-    "#009EFF",
-    "#25989A"
-]
+COLORES_CANAL = {
+    "V": "#2ecc71",
+    "N": "#e67e22",
+    "R": "#e74c3c",
+}
+
+NOMBRES_CANAL = {
+    "V": "Verde",
+    "N": "Naranja",
+    "R": "Rojo",
+}
 
 # ----------------------------------------------------------
-# CONSULTA: Rubro y FOB desde Gold
-# JOIN con dim_producto para obtener la categoría (rubro).
-# Se trae el detalle completo y se agrupa en Python
-# siguiendo la lógica del docente.
-# Filtramos es_primer_subitem = TRUE porque fob_usd es un
-# valor de cabecera del ítem que se repite en cada sub-ítem.
-# También filtramos por oficializacion en 2025: el dataset
-# incluye despachos con oficializacion de 2024 o años
-# anteriores (arrastre administrativo de los CSV mensuales),
-# que deben excluirse para representar estrictamente el año.
+# CONSULTA: Canal, cantidad y días promedio desde Gold
+# Ahora oficializacion, cancelacion y dias_despacho están
+# directos en fact_aduana (ya no se necesita Silver ni una
+# tabla auxiliar). canal_key se resuelve con JOIN a dim_canal.
+# Filtramos es_primer_subitem = TRUE porque dias_despacho es
+# un valor de cabecera del ítem que se repite en cada sub-ítem
+# (igual que el FOB); sin este filtro el promedio y el conteo
+# de operaciones quedarían distorsionados.
 # ----------------------------------------------------------
 conexion = duckdb.connect()
 
-consulta_sql = f"""
+datos = conexion.execute(f"""
     SELECT 
-        p.rubro,
-        f.fob_usd
+        c.canal_cod AS canal,
+        COUNT(*) as cantidad,
+        AVG(f.dias_despacho) as dias_promedio,
+        MIN(f.dias_despacho) as dias_min,
+        MAX(f.dias_despacho) as dias_max
     FROM '{carpeta_gold / "fact_aduana.parquet"}' f
-    LEFT JOIN '{carpeta_gold / "dim_producto.parquet"}' p
-        ON f.producto_key = p.id_producto
-    WHERE p.rubro IS NOT NULL
+    LEFT JOIN '{carpeta_gold / "dim_canal.parquet"}' c
+        ON f.canal_key = c.id_canal
+    WHERE f.cancelacion IS NOT NULL 
+    AND f.oficializacion IS NOT NULL
+    AND f.cancelacion >= f.oficializacion
     AND f.es_primer_subitem = TRUE
     AND f.oficializacion >= '2025-01-01'
     AND f.oficializacion <= '2025-12-31'
-"""
-datos = conexion.execute(consulta_sql).fetchdf()
+    AND f.dias_despacho > 0
+    GROUP BY c.canal_cod
+    ORDER BY dias_promedio ASC
+""").fetchdf()
+
+# Mapear nombres y colores legibles a partir del código de canal
+datos["nombre"] = datos["canal"].map(NOMBRES_CANAL)
+datos["color"]  = datos["canal"].map(COLORES_CANAL)
+datos["pct"]    = (datos["cantidad"] / datos["cantidad"].sum() * 100).round(1)
 
 # ==========================================================
-# GRÁFICO: Barras horizontales — Top 8 rubros por FOB
-# sort_values ASC + tail(8) → los 8 mayores al final,
-# barh los muestra de abajo hacia arriba (mayor arriba).
-# Paleta rotativa de 4 colores para diferenciar barras.
+# GRÁFICO: Dos paneles
+# Izquierdo → barras de días promedio por canal
+# Derecho   → dona de distribución de operaciones por canal
 # ==========================================================
-figura, eje = plt.subplots(figsize=(10, 5))
+figura, (eje_izq, eje_der) = plt.subplots(1, 2, figsize=(14, 6))
 figura.suptitle(
-    "Top Rubros por FOB USD Febrero 2025",
+    "Distribución de Operaciones por Canal de Control Aduanero\ny Tiempos de Despacho 2025",
     fontsize=13, fontweight="bold"
 )
 
-fob_por_rubro = (
-    datos
-    .groupby("rubro")["fob_usd"]
-    .sum()
-    .sort_values(ascending=True)
-    .tail(8)
+# --- Panel izquierdo: barras de días promedio ---
+barras = eje_izq.bar(
+    datos["nombre"],
+    datos["dias_promedio"],
+    color=datos["color"],
+    edgecolor="white",
+    width=0.5
 )
 
-# Acortar etiquetas largas para que no desborden el gráfico
-etiquetas_cortas = [
-    nombre[:45] + "..." if len(nombre) > 45 else nombre
-    for nombre in fob_por_rubro.index
-]
-
-barras = eje.barh(
-    etiquetas_cortas,
-    fob_por_rubro.values,
-    color     = PALETA_COLORES[:len(fob_por_rubro)],
-    edgecolor = "white",
-    height    = 0.65
-)
-
-# Etiqueta de valor al final de cada barra
-for barra in barras:
-    ancho = barra.get_width()
-    eje.text(
-        ancho + (fob_por_rubro.max() * 0.01),
-        barra.get_y() + barra.get_height() / 2,
-        f"${ancho / 1e6:.1f}M",
-        va="center", fontsize=8
+# Etiqueta sobre cada barra con 1 decimal y sufijo días
+for barra, dias in zip(barras, datos["dias_promedio"]):
+    eje_izq.text(
+        barra.get_x() + barra.get_width() / 2,
+        barra.get_height() + 0.5,
+        f"{dias:.1f} días",
+        ha="center", va="bottom",
+        fontsize=10, fontweight="bold"
     )
 
-# Eje X en millones para mejor legibilidad
-eje.xaxis.set_major_formatter(mticker.FuncFormatter(lambda v, _: f"${v / 1e6:.0f}M"))
-eje.set_xlabel("FOB (USD)", fontsize=9)
-eje.tick_params(axis="y", labelsize=8)
-eje.grid(axis="x", linestyle="--", alpha=0.4)
+eje_izq.set_title("Días Promedio de Despacho por Canal", fontsize=11, fontweight="bold")
+eje_izq.set_ylabel("Días promedio", fontsize=9)
+eje_izq.set_ylim(0, datos["dias_promedio"].max() * 1.2)
+eje_izq.tick_params(axis="x", labelsize=10)
+eje_izq.tick_params(axis="y", labelsize=8)
+eje_izq.grid(axis="y", linestyle="--", alpha=0.4)
+
+# --- Panel derecho: dona de distribución ---
+sectores, textos, porcentajes = eje_der.pie(
+    datos["cantidad"],
+    labels=None,
+    autopct="%1.1f%%",
+    colors=datos["color"].tolist(),
+    startangle=90,
+    wedgeprops={"edgecolor": "white", "linewidth": 1.5, "width": 0.6},
+    textprops={"fontsize": 9}
+)
+
+# Porcentajes en blanco y negrita para contraste
+for pct in porcentajes:
+    pct.set_fontweight("bold")
+    pct.set_color("white")
+
+# Leyenda con nombre y cantidad de operaciones
+etiquetas = [
+    f"Canal {row['nombre']} ({row['cantidad']:,} ops.)"
+    for _, row in datos.iterrows()
+]
+eje_der.legend(
+    etiquetas,
+    loc="lower center",
+    bbox_to_anchor=(0.5, -0.15),
+    fontsize=9,
+    ncol=1
+)
+eje_der.set_title("Distribución de Operaciones por Canal", fontsize=11, fontweight="bold")
 
 # ----------------------------------------------------------
-# EXPORTACIÓN Y VERIFICACIÓN
+# EXPORTACIÓN
 # ----------------------------------------------------------
 plt.tight_layout()
-ruta_salida = carpeta_graficos / "FOB por rubro.png"
-plt.savefig(ruta_salida, bbox_inches="tight")
+ruta_salida = carpeta_graficos / "01_canal_despacho.png"
+plt.savefig(ruta_salida, bbox_inches="tight", dpi=150)
 plt.show()
 
-# Total general como verificación rápida contra Power BI
-print(f"Total FOB real: ${datos['fob_usd'].sum() / 1e6:.2f}M")
+print("\nResultados:")
+for _, fila in datos.iterrows():
+    print(f"Canal {fila['nombre']:8} | {fila['cantidad']:>10,} ops | {fila['dias_promedio']:.1f} días promedio")

@@ -1,6 +1,6 @@
 # ==========================================================
 # PROYECTO: BI - DNIT (Aduanas)
-# SCRIPT:   Análisis de Ratio de Embalaje por Rubro
+# SCRIPT:   Análisis 2 - Ratio de Embalaje por Rubro
 # OBJETIVO: Diferenciar Kilo Bruto vs Kilo Neto por rubro para
 #           visualizar el peso del embalaje como diferencia
 #           entre ambos.
