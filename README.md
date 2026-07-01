@@ -39,7 +39,8 @@ curso-04-bi/
 |       |-- 03_verificacion_general.py     # KPIs sin filtro de operacion (12 meses)
 |       |-- 04_verificacion_importacion.py # KPIs solo importacion
 |       |-- 05_verificacion_exportacion.py # KPIs solo exportacion
-|       └-- 08_validacion_deduplicacion.py # Impacto visual con/sin es_primer_subitem
+|       |-- 04_validacion_deduplicacion.py # Impacto visual con/sin es_primer_subitem
+|       └-- output_validaciones/           # Graficos PNG generados por la validacion
 |
 |-- reports/
 |   |-- analisis_power_bi/            # Scripts de analisis y visualizacion Python
@@ -165,7 +166,7 @@ aplicar la deduplicacion por item/sub-item, mostrando el caso extremo
 tabla comparativa de totales con y sin `es_primer_subitem = TRUE`.
 
 ```bash
-python sql/verificaciones/08_validacion_deduplicacion.py
+python sql/verificaciones/04_validacion_deduplicacion.py
 ```
 
 ---
